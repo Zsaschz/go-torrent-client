@@ -1,17 +1,23 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha1"
+	//"crypto/sha1"
 	"errors"
+	//"fmt"
+	"github.com/jackpal/bencode-go"
 	"io"
 	"strconv"
 	"strings"
 )
 
 type bencodeInfo struct {
-	Pieces       string `bencode:"pieces"`
-	PiecesLength int    `bencode:"pieces length"`
 	Length       int    `bencode:"length"`
 	Name         string `bencode:"name"`
+	PiecesLength int    `bencode:"piece length"`
+	Pieces       string `bencode:"pieces"`
+	//rawInfo      string
 }
 
 type BencodeTorrent struct {
@@ -19,8 +25,36 @@ type BencodeTorrent struct {
 	Info     bencodeInfo `bencode:"info"`
 }
 
+// TODO: fix hash calculation
+//func (bto *BencodeTorrent) infoHash() [20]byte {
+//	encodeByte := []byte(bto.Info.rawInfo)
+//	result, _, _ := parse(bto.Info.rawInfo, 0)
+//	fmt.Println(bto.Info.rawInfo)
+//	fmt.Println(result)
+//	return sha1.Sum(encodeByte)
+//}
+
 func (bto *BencodeTorrent) toTorrentFile() *TorrentFile {
-	return nil
+	var pieceHashes [][20]byte
+	for i := 0; i < len(bto.Info.Pieces); i = i + 20 {
+		byteArray := []byte(bto.Info.Pieces[i : i+20])
+		var arr [20]byte
+		copy(arr[:], byteArray)
+		pieceHashes = append(pieceHashes, arr)
+	}
+
+	var buff bytes.Buffer
+	_ = bencode.Marshal(&buff, bto.Info)
+	infoHash := sha1.Sum(buff.Bytes())
+
+	return &TorrentFile{
+		Announce:    bto.Announce,
+		InfoHash:    infoHash,
+		PieceHashes: pieceHashes,
+		PieceLength: bto.Info.PiecesLength,
+		Length:      bto.Info.Length,
+		Name:        bto.Info.Name,
+	}
 }
 
 func parseInt(text string, idx int) (int64, int, error) {
@@ -47,7 +81,7 @@ func parseStr(text string, idx int) (string, int, error) {
 func parseList(text string, idx int) ([]interface{}, int, error) {
 	data := make([]interface{}, 0)
 	for rune(text[idx]) != 'e' {
-		value, endIdx, err := parse(text, idx)
+		value, endIdx, err := ParseBencode(text, idx)
 		if err != nil {
 			return nil, endIdx, err
 		}
@@ -60,7 +94,7 @@ func parseList(text string, idx int) ([]interface{}, int, error) {
 func parseDict(text string, idx int) (map[string]interface{}, int, error) {
 	data := make(map[string]interface{})
 	for rune(text[idx]) != 'e' {
-		value, endIdx, err := parse(text, idx)
+		value, endIdx, err := ParseBencode(text, idx)
 		if err != nil {
 			return nil, endIdx, err
 		}
@@ -68,7 +102,7 @@ func parseDict(text string, idx int) (map[string]interface{}, int, error) {
 		if !ok {
 			return nil, endIdx, err
 		}
-		value, endIdx, err = parse(text, endIdx)
+		value, endIdx, err = ParseBencode(text, endIdx)
 		if err != nil {
 			return data, endIdx, err
 		}
@@ -78,7 +112,7 @@ func parseDict(text string, idx int) (map[string]interface{}, int, error) {
 	return data, idx, nil
 }
 
-func parse(text string, idx int) (interface{}, int, error) {
+func ParseBencode(text string, idx int) (interface{}, int, error) {
 	var value interface{}
 	var err error
 	length := len([]rune(text))
@@ -98,37 +132,40 @@ func parse(text string, idx int) (interface{}, int, error) {
 	return value, idx, err
 }
 
-func DecodeTorrent(r io.Reader) (data *BencodeTorrent, err error) {
+func getInfoSubstring(text string) string {
+	idx := strings.Index(text, "4:info") + 6
+	return text[idx : len(text)-1]
+}
+
+func ParseTorrent(r io.Reader) (data *BencodeTorrent, err error) {
 	buf := new(strings.Builder)
 	_, err = io.Copy(buf, r)
 	if err != nil {
 		return nil, err
 	}
-	parsed, _, err := parse(buf.String(), 0)
+
+	parsed, _, err := ParseBencode(buf.String(), 0)
 	if err != nil {
 		return nil, err
 	}
+
 	parsedMap, ok := parsed.(map[string]interface{})
 	if !ok {
 		return nil, errors.New("failed to decode torrent file")
 	}
+
 	announce := parsedMap["announce"].(string)
 	info, ok := parsedMap["info"].(map[string]interface{})
 	if !ok {
 		return nil, errors.New("failed to decode torrent file")
 	}
-
-	pieces := info["pieces"].(string)
-	length := info["length"].(int64)
-	name := info["name"].(string)
-	piecesLength := info["piece length"].(int64)
+	bInfo := bencodeInfo{}
+	err = MapToStruct(info, bInfo)
+	if err != nil {
+		return nil, err
+	}
 	return &BencodeTorrent{
 		Announce: announce,
-		Info: bencodeInfo{
-			Pieces:       pieces,
-			PiecesLength: int(piecesLength),
-			Length:       int(length),
-			Name:         name,
-		},
+		Info:     bInfo,
 	}, nil
 }
