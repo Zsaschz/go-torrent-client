@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"github.com/jackpal/bencode-go"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 )
 
 func main() {
@@ -50,7 +52,11 @@ func main() {
 	fmt.Printf("%+v\n", tracker)
 
 	peers, _ := tracker.getPeers()
-	for peer := range peers {
+	for _, peer := range peers {
 		fmt.Printf("%+v\n", peer)
+		conn, err := net.DialTimeout("tcp", peer.String(), 3*time.Second)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
