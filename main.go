@@ -11,6 +11,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"torrent-client/bencode"
+	"torrent-client/utils"
 )
 
 func main() {
@@ -21,7 +23,7 @@ func main() {
 		panic(err)
 	}
 	r := bufio.NewReader(file)
-	bto := BencodeTorrent{}
+	bto := bencode.BencodeTorrent{}
 	err = bencode.Unmarshal(r, &bto)
 	if err != nil {
 		panic(err)
@@ -43,9 +45,9 @@ func main() {
 
 	responseData, err := ioutil.ReadAll(response.Body)
 
-	parsed, _, err := ParseBencode(string(responseData), 0)
+	parsed, _, err := bencode.ParseBencode(string(responseData), 0)
 	parsedMap, _ := parsed.(map[string]interface{})
-	err = MapToStruct(parsedMap, &tracker)
+	err = utils.MapToStruct(parsedMap, &tracker)
 	if err != nil {
 		panic(err)
 	}

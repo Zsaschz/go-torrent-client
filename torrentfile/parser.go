@@ -1,18 +1,17 @@
-package main
+package torrentfile
 
 import (
 	"bytes"
 	"crypto/sha1"
-	//"crypto/sha1"
 	"errors"
-	//"fmt"
 	"github.com/jackpal/bencode-go"
 	"io"
 	"strconv"
 	"strings"
+	"torrent-client/utils"
 )
 
-type bencodeInfo struct {
+type torrentInfo struct {
 	Length       int    `bencode:"length"`
 	Name         string `bencode:"name"`
 	PiecesLength int    `bencode:"piece length"`
@@ -22,7 +21,7 @@ type bencodeInfo struct {
 
 type BencodeTorrent struct {
 	Announce string      `bencode:"announce"`
-	Info     bencodeInfo `bencode:"info"`
+	Info     torrentInfo `bencode:"info"`
 }
 
 // TODO: fix hash calculation
@@ -159,8 +158,8 @@ func ParseTorrent(r io.Reader) (data *BencodeTorrent, err error) {
 	if !ok {
 		return nil, errors.New("failed to decode torrent file")
 	}
-	bInfo := bencodeInfo{}
-	err = MapToStruct(info, bInfo)
+	bInfo := torrentInfo{}
+	err = utils.MapToStruct(info, bInfo)
 	if err != nil {
 		return nil, err
 	}
